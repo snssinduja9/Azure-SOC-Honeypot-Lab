@@ -133,6 +133,7 @@ This is the alert you really don't want to see, because it means the brute force
 let Successes = SecurityEvent
     | where EventID == 4624 and LogonType in (3, 10)
     | where isnotempty(IpAddress) and IpAddress != "-"
+    | where TimeGenerated > ago(1h)
     | project SuccessTime = TimeGenerated, Account, IpAddress, Computer, LogonType;
 let Failures = SecurityEvent
     | where EventID == 4625
@@ -152,6 +153,8 @@ For each successful network or RDP login, it looks at the hour before it and cou
 - Result: nothing. No attacker IP ever logged in.
 
 My first version of this rule was sloppier. It flagged any successful login from an IP that had 10+ failures *at any point*, without checking that the failures came first. Something could have happened days apart and it would still have matched. The version above fixes that. It also skips events with no usable source IP: Windows often logs local logins with the IP as `-`, and two unrelated `-` events would otherwise match each other.
+
+The scheduling took a bit of thought too. The rule runs every hour but needs two hours of data, because a login at the start of the hour still needs the hour of failures before it. The catch is that a two-hour lookback means each login gets seen by two runs and could alert twice. So the query only looks at logins from the last hour (`ago(1h)`), while still using two hours of failures. Each login is checked exactly once. (This is the same kind of duplicate alert problem I hit with Rule A, so I knew to look for it.)
 
 It still has limits. It only fires if the failures and the success come from the same IP, within an hour, and above my threshold. An attacker who guesses slowly, or switches IP before logging in, wouldn't trigger it. So 0 results means "no brute force followed by success that this rule can see," not proof that nothing got through.
 
