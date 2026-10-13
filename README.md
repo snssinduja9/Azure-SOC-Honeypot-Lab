@@ -8,7 +8,7 @@ I put a Windows VM on the internet with the firewall off, waited to see who woul
 
 In about 24 hours the VM got **25,960 failed logins from 11 IP addresses**. Most of it came from one IP in a data center (80.94.95.83), which made almost 17,000 attempts on its own, around 30 per minute, all night.
 
-I wrote two detection rules, got 7 incidents out of them and closed all 7. The biggest one I investigated properly and wrote up as an incident report. Nobody got in: every successful login in the logs was mine.
+I wrote two detection rules, got 7 incidents out of them and closed all 7. The biggest one I investigated properly and wrote up as an incident report. None of the attacker IPs logged in successfully. Every successful network/RDP login in the logs came from my own IP. (I only collected login events, so that's what I can prove: no sign of an attacker getting in through a login, not that every other kind of compromise is ruled out.)
 
 The part I learned most from was finding the weak spots in my own rules. Five IPs never set off an alert, and one setting I chose made the same attack alert over and over. Both are written up below.
 
@@ -42,7 +42,7 @@ The part I learned most from was finding the weak spots in my own rules. Five IP
 
 | | |
 |---|---|
-| Collection period | about 24 hours, 7–8 October 2026 |
+| Collection period | about 24 hours, 7–8 October 2026 (times in this README are UTC unless stated) |
 | Failed logins (Event ID 4625) | 25,960 |
 | Source IPs | 11 |
 | Top attacker | 80.94.95.83, 16,813 attempts (about 65% of everything) |
@@ -121,7 +121,9 @@ It groups failed logins by IP, by machine and by 10-minute block, and alerts on 
 - Runs every hour, severity Medium, mapped to **T1110 Brute Force**
 - Result: 7 incidents from 6 IPs
 
-The weakness is that anyone going slower than 10 attempts per 10 minutes never shows up. In my data, 5 IPs did exactly that.
+A note on the numbers, because they confused me at first: an **alert** is one hit from the rule (one IP, one 10-minute block), and an **incident** is the case Sentinel groups those alerts into for me to work on. I grouped alerts by matching IP and host, so most IPs got one incident each, but one IP's alerts ended up split across two incidents, which is why it's 7 incidents for 6 IPs. Incident #3 covered 53 ten-minute blocks, and its alert count later grew to 150 because of a lookback mistake I explain in [What I learned](#what-i-learned).
+
+The weakness is that anyone going slower than 10 attempts per 10 minutes never shows up. In my data, 5 IPs did exactly that. There's a second, subtler gap: the blocks are fixed (10:00–10:10, 10:10–10:20 and so on), not a rolling window. So 6 attempts at 10:08 and 6 more at 10:12 is 12 attempts in four minutes, but it's split across two blocks and never reaches 10 in either.
 
 ### Rule B: a successful login right after a lot of failures
 
@@ -130,9 +132,11 @@ This is the alert you really don't want to see, because it means the brute force
 ```kql
 let Successes = SecurityEvent
     | where EventID == 4624 and LogonType in (3, 10)
+    | where isnotempty(IpAddress) and IpAddress != "-"
     | project SuccessTime = TimeGenerated, Account, IpAddress, Computer, LogonType;
 let Failures = SecurityEvent
     | where EventID == 4625
+    | where isnotempty(IpAddress) and IpAddress != "-"
     | project FailTime = TimeGenerated, IpAddress, Computer;
 Successes
 | join kind=inner Failures on IpAddress, Computer
@@ -147,7 +151,9 @@ For each successful network or RDP login, it looks at the hour before it and cou
 - Runs every hour with a 2-hour lookback, severity High, mapped to **T1110** and **T1078 Valid Accounts**
 - Result: nothing. No attacker IP ever logged in.
 
-My first version of this rule was sloppier. It flagged any successful login from an IP that had 10+ failures *at any point*, without checking that the failures came first. Something could have happened days apart and it would still have matched. The version above fixes that.
+My first version of this rule was sloppier. It flagged any successful login from an IP that had 10+ failures *at any point*, without checking that the failures came first. Something could have happened days apart and it would still have matched. The version above fixes that. It also skips events with no usable source IP: Windows often logs local logins with the IP as `-`, and two unrelated `-` events would otherwise match each other.
+
+It still has limits. It only fires if the failures and the success come from the same IP, within an hour, and above my threshold. An attacker who guesses slowly, or switches IP before logging in, wouldn't trigger it. So 0 results means "no brute force followed by success that this rule can see," not proof that nothing got through.
 
 All the queries are in [`kql/queries.kql`](kql/queries.kql).
 
@@ -203,7 +209,9 @@ Incident #3 was the obvious one to dig into: 53 ten-minute alert windows, all fr
 
 **What was it trying?** Only seven usernames: `ADMIN`, `USER`, `BACKUP`, `ADMINISTRATOR`, `ADMINISTRADOR`, `SYSTEM`, `Test`. These are default account names, and "Administrador" is the Spanish/Portuguese version, so it looks like a generic wordlist built to work on machines anywhere. Nothing about it was aimed at my VM in particular.
 
-**Did those accounts even exist?** No, and this was the most useful thing I found. Every single attempt had SubStatus `0xc0000064`, which means "this username doesn't exist." If I'd seen `0xc000006a` instead (real username, wrong password), I'd have taken it much more seriously, because then the attacker only needs the password. Here they never found a real account.
+**Did those accounts even exist?** No, and this was the most useful thing I found. Every single attempt had SubStatus `0xc0000064`, which means "this username doesn't exist." If I'd seen `0xc000006a` instead (real username, wrong password), I'd have taken it much more seriously, because then the attacker only needs the password. So none of the usernames it tried were real. That doesn't mean it could never succeed with a different list or a different method, but in this activity it never got as far as a valid account.
+
+One more thing I had to be careful about: these were **logon type 3** (network logon). That type alone doesn't prove RDP, since file sharing (SMB) logons are type 3 too. But failed RDP logins with Network Level Authentication also show up as type 3, and the AbuseIPDB reports for this IP are mostly RDP honeypots on port 3389, so I'm describing it as RDP brute force on that combined evidence.
 
 **Did anyone get in?** I searched for 4624 events from this IP and got nothing back. I also went through every network/RDP login in the dataset, and all of them were from my own IP. So there's no sign of attacker access in the logs. I should be honest about the limits: the VM only sent Windows Security events, with no EDR or process data, so this conclusion is based on login evidence only.
 
