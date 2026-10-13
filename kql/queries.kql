@@ -1,0 +1,67 @@
+// ============================================================
+// Azure SOC Honeypot Lab - KQL queries (Microsoft Sentinel)
+// Table: SecurityEvent (Windows Security log via Azure Monitor Agent)
+// ============================================================
+
+// 1. Overall volume of failed logons
+SecurityEvent
+| where EventID == 4625
+| summarize Attempts = count(), UniqueIPs = dcount(IpAddress),
+    FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated)
+
+// 2. Top attacking IPs
+SecurityEvent
+| where EventID == 4625
+| summarize Attempts = count(), FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated) by IpAddress
+| order by Attempts desc
+
+// 3. Most targeted usernames
+SecurityEvent
+| where EventID == 4625
+| summarize Attempts = count() by TargetUserName
+| order by Attempts desc
+| take 15
+
+// 4. Compromise check: successful network/RDP logons
+SecurityEvent
+| where EventID == 4624
+| where LogonType in (3, 10)
+| project TimeGenerated, Account, IpAddress, LogonType, WorkstationName
+| order by TimeGenerated desc
+
+// 5. Scope a single attacker IP (used in IR-001)
+SecurityEvent
+| where EventID == 4625 and IpAddress == "80.94.95.83"
+| summarize Attempts = count(), FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated),
+    Usernames = make_set(TargetUserName, 15), SubStatus = make_set(SubStatus)
+
+// 6. Detection coverage: peak attempts per 10 minutes per IP
+//    (IPs with MaxIn10Min < 10 never triggered Rule A)
+SecurityEvent
+| where EventID == 4625
+| summarize c = count() by IpAddress, bin(TimeGenerated, 10m)
+| summarize TotalAttempts = sum(c), MaxIn10Min = max(c) by IpAddress
+| order by TotalAttempts desc
+
+// ------------------------------------------------------------
+// Analytics Rule A - Brute Force: Multiple Failed Logons from Single IP
+// MITRE: T1110 (Credential Access) | Severity: Medium | Every 1h
+// ------------------------------------------------------------
+SecurityEvent
+| where EventID == 4625
+| summarize FailedAttempts = count(), Usernames = make_set(TargetUserName, 20)
+    by IpAddress, Computer, bin(TimeGenerated, 10m)
+| where FailedAttempts >= 10
+
+// ------------------------------------------------------------
+// Analytics Rule B - Possible Brute Force Success: Logon After Repeated Failures
+// MITRE: T1110, T1078 (Credential Access, Initial Access) | Severity: High
+// ------------------------------------------------------------
+let Failures = SecurityEvent
+    | where EventID == 4625
+    | summarize FailedAttempts = count() by IpAddress
+    | where FailedAttempts >= 10;
+SecurityEvent
+| where EventID == 4624 and LogonType in (3, 10)
+| join kind=inner Failures on IpAddress
+| project TimeGenerated, Account, IpAddress, Computer, LogonType, FailedAttempts
