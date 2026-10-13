@@ -67,7 +67,7 @@ SecurityEvent
 
 A detection rule for "successful logon after repeated failures" (T1110 / T1078) also returned no results across the dataset. Across all collected data, the only successful logons came from the lab administrator's own IP.
 
-**Impact: none. No account compromise, no lateral movement, no data access.**
+**Impact: no evidence of successful access by the attacker in the collected Windows Security logs.** (Scope: the honeypot collected Windows Security events only, with no EDR or process telemetry, so the conclusion is based on authentication evidence.)
 
 ## 5. Threat Intelligence Enrichment
 
