@@ -62,9 +62,11 @@ SecurityEvent
 // ------------------------------------------------------------
 let Successes = SecurityEvent
     | where EventID == 4624 and LogonType in (3, 10)
+    | where isnotempty(IpAddress) and IpAddress != "-"   // skip events with no usable source IP
     | project SuccessTime = TimeGenerated, Account, IpAddress, Computer, LogonType;
 let Failures = SecurityEvent
     | where EventID == 4625
+    | where isnotempty(IpAddress) and IpAddress != "-"
     | project FailTime = TimeGenerated, IpAddress, Computer;
 Successes
 | join kind=inner Failures on IpAddress, Computer
