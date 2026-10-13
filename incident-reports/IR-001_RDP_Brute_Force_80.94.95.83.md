@@ -16,7 +16,7 @@
 
 ## 1. Summary
 
-An automated brute-force attack from **80.94.95.83** made **16,813 failed logon attempts** against the honeypot VM **CORP-NET-EAST-1** over about 9.5 hours. The attacker cycled through a wordlist of default account names. None of the usernames existed on the host, and there were **no successful logons** from the source IP. **No compromise occurred.**
+An automated brute-force attack from **80.94.95.83** made **16,813 failed logon attempts** against the honeypot VM **CORP-NET-EAST-1** over about 9.5 hours. The attacker cycled through a wordlist of default account names. None of the usernames existed on the host, and there were **no successful logons** from the source IP. **There is no evidence of successful attacker access in the collected Windows Security logs.**
 
 ## 2. Timeline (UTC)
 
@@ -99,11 +99,14 @@ A detection rule for "successful logon after repeated failures" (T1110 / T1078) 
 
 ## 6. Verdict
 
-**True Positive (suspicious activity, unsuccessful).** Confirmed automated RDP brute-force attempt from a known malicious IP. No compromise.
+**True Positive (suspicious activity, unsuccessful).**
+
+- **Detection verdict: True Positive.** The rule caught genuine malicious activity: automated brute force from a known malicious IP. "True positive" here means the alert was correct, not that the attack succeeded.
+- **Impact: no evidence of successful attacker access** in the collected Windows Security (authentication) logs.
 
 ## 7. Recommendations
 
-1. **Block** 80.94.95.83 at the Network Security Group / firewall (consider blocking AS204428 if business needs allow).
+1. **Block** 80.94.95.83 at the Network Security Group / firewall. Given its long abuse history this is low risk, but it should follow the organisation's blocking policy. Blocking the whole ASN (AS204428) is not recommended by default, since it could also block legitimate services hosted there.
 2. **Remove direct internet exposure of RDP (3389):** restrict the NSG to known source IPs, or use Azure Bastion / VPN / Just-In-Time VM access.
 3. **Enforce an account lockout policy** and strong, unique passwords; **enable MFA** for remote access.
 4. **Rename or disable default accounts** (e.g. Administrator) to defeat wordlist-based guessing.
