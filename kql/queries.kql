@@ -58,11 +58,14 @@ SecurityEvent
 // MITRE: T1110, T1078 (Credential Access, Initial Access) | Severity: High
 // v2: only counts failures from the same IP on the same host in the
 // 1 hour BEFORE each successful logon (enforces event order).
-// Schedule: run every 1h, lookback 2h.
+// Schedule: run every 1h, lookback 2h. The 2h lookback gives the failures
+// an hour of history; the ago(1h) filter means each success is only checked once.
+// To hunt over older data in Logs, remove the ago(1h) line.
 // ------------------------------------------------------------
 let Successes = SecurityEvent
     | where EventID == 4624 and LogonType in (3, 10)
     | where isnotempty(IpAddress) and IpAddress != "-"   // skip events with no usable source IP
+    | where TimeGenerated > ago(1h)   // only alert on logins from the last hour (rule runs hourly) so the same login isn't alerted twice
     | project SuccessTime = TimeGenerated, Account, IpAddress, Computer, LogonType;
 let Failures = SecurityEvent
     | where EventID == 4625
