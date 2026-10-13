@@ -39,13 +39,13 @@ An automated brute-force attack from **80.94.95.83** made **16,813 failed logon 
 | Total attempts | 16,813 (~65% of all 25,960 failed logons collected from 11 unique IPs) |
 | Duration | ~9.5 hours |
 | Rate | ~30 attempts per minute (automated tool) |
-| Logon type | 3 (Network, RDP with NLA / NTLM) |
+| Logon type | 3 (Network logon via NTLM). Consistent with RDP using NLA, which logs failures as type 3; AbuseIPDB reports for this IP show RDP (port 3389) activity. Type 3 alone does not prove RDP. |
 | Usernames tried | ADMIN, USER, BACKUP, ADMINISTRATOR, ADMINISTRADOR, SYSTEM, Test |
 | SubStatus | 0xc0000064 only (username does not exist) |
 
 **Interpretation:**
 - The usernames are a generic wordlist of default or common account names, including localized variants ("Administrador"). This points to an untargeted, mass-scanning tool.
-- SubStatus **0xc0000064** on every attempt means the attacker **never found a valid username**. The chance of success was negligible.
+- SubStatus **0xc0000064** on every attempt means none of the usernames tried existed on the host. The attacker failed to identify a valid account **with the usernames observed in this activity**. This does not rule out other usernames or attack methods outside the collected evidence.
 - Alert count (53 alerts × 10-minute windows ≈ 9 hours) matches the attack duration in the raw logs.
 
 **KQL used (scope):**
