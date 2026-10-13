@@ -56,12 +56,36 @@ SecurityEvent
 // ------------------------------------------------------------
 // Analytics Rule B - Possible Brute Force Success: Logon After Repeated Failures
 // MITRE: T1110, T1078 (Credential Access, Initial Access) | Severity: High
+// v2: only counts failures from the same IP on the same host in the
+// 1 hour BEFORE each successful logon (enforces event order).
+// Schedule: run every 1h, lookback 2h.
 // ------------------------------------------------------------
+let Successes = SecurityEvent
+    | where EventID == 4624 and LogonType in (3, 10)
+    | project SuccessTime = TimeGenerated, Account, IpAddress, Computer, LogonType;
 let Failures = SecurityEvent
     | where EventID == 4625
-    | summarize FailedAttempts = count() by IpAddress
-    | where FailedAttempts >= 10;
+    | project FailTime = TimeGenerated, IpAddress, Computer;
+Successes
+| join kind=inner Failures on IpAddress, Computer
+| where FailTime between ((SuccessTime - 1h) .. SuccessTime)
+| summarize FailedBefore = count(), FirstFailure = min(FailTime)
+    by SuccessTime, Account, IpAddress, Computer, LogonType
+| where FailedBefore >= 10
+
+// ------------------------------------------------------------
+// Extra investigation queries
+// ------------------------------------------------------------
+
+// Failure reasons per IP and username (SubStatus 0xc0000064 = user doesn't exist,
+// 0xc000006a = valid user, wrong password)
 SecurityEvent
-| where EventID == 4624 and LogonType in (3, 10)
-| join kind=inner Failures on IpAddress
-| project TimeGenerated, Account, IpAddress, Computer, LogonType, FailedAttempts
+| where EventID == 4625
+| summarize Attempts = count() by IpAddress, TargetUserName, SubStatus
+| order by Attempts desc
+
+// Attack timeline: failed logons per 10 minutes per IP
+SecurityEvent
+| where EventID == 4625
+| summarize FailedAttempts = count() by bin(TimeGenerated, 10m), IpAddress
+| order by TimeGenerated asc
