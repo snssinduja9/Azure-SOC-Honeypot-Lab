@@ -1,6 +1,6 @@
 # Azure SOC Honeypot Lab (Microsoft Sentinel, KQL, incident response)
 
-I put a Windows VM on the internet with the firewall off, waited to see who would try to break in, and then investigated it the way an L1 SOC analyst would. Logs went into Microsoft Sentinel, I wrote my own detection rules in KQL, and I triaged every incident they raised.
+I put a Windows VM on the internet with the firewall off, waited to see who would try to break in, and then investigated it the way an L1 SOC analyst would. Logs went into Microsoft Sentinel, I set up detection rules in KQL, and I triaged every incident they raised.
 
 ![Attack map](screenshots/01-attack-map.png)
 
@@ -8,7 +8,7 @@ I put a Windows VM on the internet with the firewall off, waited to see who woul
 
 In about 24 hours the VM got **25,960 failed logins from 11 IP addresses**. Most of it came from one IP in a data center (80.94.95.83), which made almost 17,000 attempts on its own, around 30 per minute, all night.
 
-I wrote two detection rules, got 7 incidents out of them and closed all 7. The biggest one I investigated properly and wrote up as an incident report. None of the attacker IPs logged in successfully. Every successful network/RDP login in the logs came from my own IP. (I only collected login events, so that's what I can prove: no sign of an attacker getting in through a login, not that every other kind of compromise is ruled out.)
+I set up two detection rules, got 7 incidents out of them and closed all 7. The biggest one I investigated properly and wrote up as an incident report. None of the attacker IPs logged in successfully. Every successful network/RDP login in the logs came from my own IP. (I only collected login events, so that's what I can prove: no sign of an attacker getting in through a login, not that every other kind of compromise is ruled out.)
 
 The part I learned most from was finding the weak spots in my own rules. Five IPs never set off an alert, and one setting I chose made the same attack alert over and over. Both are written up below.
 
@@ -98,7 +98,7 @@ To be clear, opening every port and turning the firewall off was only for the ex
 
 **Sentinel and the map.** I turned on Sentinel for the workspace, imported a GeoIP watchlist and joined it to the failed logins to draw the attack map. The map looks good, but I only treat the locations as rough. More on that in [What I learned](#what-i-learned).
 
-**Rules and triage.** I wrote two scheduled analytics rules, worked through all 7 incidents they created, and picked the biggest one for a full investigation.
+**Rules and triage.** I set up two scheduled analytics rules, worked through all 7 incidents they created, and picked the biggest one for a full investigation.
 
 ## Detection rules
 
